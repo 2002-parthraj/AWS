@@ -1,0 +1,303 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates an PSB59AutoScallingGroup EC2 Instance.
+# Metadata: 
+
+Parameters: 
+
+  EnviromentName:
+    Type: String
+    Default: Production
+    Description: Environment Name that will be used to name resources.
+
+  InstancetypePSB59:
+    Type: String
+    Default: r5.4xlarge
+    Description: Please enter APPServer Instance Type
+    AllowedValues:
+    - r5.12xlarge
+    - r5.24xlarge
+    - r5.8xlarge
+    - r5.4xlarge
+  
+  NetworkstackName:
+    Type: String
+    Default: PROD-VPC-ALL-AZ
+    Description: Network Stack Name that will be used to name resources.
+
+  CMKKEYID:
+    Type: String
+    Default: "arn:aws:kms:ap-south-1:992382824137:key/f141d974-1ccb-4425-9e39-dc585bd0e57a"
+    Description: CMK Key ID
+  
+  LaunchTemplateStackName:
+    Type: String
+    Default: PSB59AS-LaunchTemplate
+    Description: Launch Template Stack Name that will be used to name resources.
+
+  CoolDownPeriod:
+    Type: String
+    Default: 0
+    Description: Cool Down Period in Seconds
+  
+  DesiredCapacityCount:
+    Type: String
+    Default: 1
+    Description: Desired Capacity
+
+  MaxSizeCount:
+    Type: String
+    Default: 1
+    Description: Max Size Count
+
+  MinSizeCount:
+    Type: String
+    Default: 1
+    Description: Min Size Count
+
+  HealthCheckGracePeriodSec:
+    Type: String
+    Default: 0
+    Description: Health Check Grace Period
+  
+  DefaultInstanceWarmupSec:
+    Type: String
+    Default: 0
+    Description: Default Instance Warmup
+
+  IAMROLEARN:
+    Type: String
+    Default: "arn:aws:iam::992382824137:instance-profile/PROD-VPC-ALL-AZ-EC2S3CWSSMRole-BPsxhjWB9yms"
+    Description: IAM Role ARN
+
+
+# Mappings: 
+
+# Conditions: 
+
+Resources: 
+  PSB59AutoScallingGroupLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: PSB59AS-LaunchTemplate
+      LaunchTemplateData: 
+        # IamInstanceProfile: 
+        #   Arn: !GetAtt '${NetworkstackName}-EC2S3CWSSMRoleARNEP.Arn'
+        ImageId: ami-076a921d88cbec098
+        KeyName: PSB59-APP-Server
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name_
+            Value: PSB59_APP_SERVER
+          - Key: Project
+            Value: PSB59
+        - ResourceType: volume
+          Tags:
+          - Key: Name
+            Value: PSB59_APP_SERVER
+          - Key: Project
+            Value: PSB59
+        SecurityGroupIds: 
+          - !Ref PSB59APPSGroup
+        UserData: 
+         !Base64 |
+                  #!/bin/bash
+                  sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+                  echo "KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256" | sudo tee -a /etc/ssh/sshd_config
+                  echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" | sudo tee -a /etc/ssh/sshd_config
+                  sudo systemctl restart sshd
+                  sudo echo "Welcome@12345" | passwd --stdin "vapt"
+                  sudo yum update -y        
+        InstanceType: !Ref InstancetypePSB59
+        BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-06c70459440b670ff
+            VolumeSize: 75
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sdb
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0d34558deceb0686d
+            VolumeSize: 20
+            VolumeType: gp3
+            Throughput: 125  
+        - DeviceName: /dev/sdc
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-07eb4e066f17ad13b 
+            VolumeSize: 12
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sdd
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0e8196ebed26aa485
+            VolumeSize: 5
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sde
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0647763ffe3b7a693
+            VolumeSize: 4
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sdf
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0c32668db752c3a1b
+            VolumeSize: 6
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sdg
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0849be053cdeeed7b
+            VolumeSize: 15
+            VolumeType: gp3
+            Throughput: 125
+        - DeviceName: /dev/sdh
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0849be053cdeeed7b
+            VolumeSize: 650
+            VolumeType: gp3
+            Throughput: 125
+
+######################################################################################################
+
+  PSB59APPSGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: PSB59_AP_SERVER-SG
+      GroupDescription: This security group for PSB Server
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.3.171/32
+          Description: PFSense
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.60.6.61/32
+          Description: GuacaMole-Server
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.80.5.191/32
+          Description: Nginx1
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.80.5.76/32
+          Description: Nginx2
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: All
+      Tags:
+        - Key: Name
+          Value: PSB59_AP_SERVER-SG
+
+######################################################################################################
+  PSB59AutoScallingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        AutoScalingGroupName: PSB59AutoScallingGroup
+        AvailabilityZones: 
+          - ap-south-1a
+        # CapacityRebalance: Boolean
+        # Context: String
+        Cooldown: !Ref CoolDownPeriod
+        DefaultInstanceWarmup: !Ref DefaultInstanceWarmupSec
+        DesiredCapacity: !Ref DesiredCapacityCount
+        DesiredCapacityType: units
+        HealthCheckGracePeriod: !Ref HealthCheckGracePeriodSec
+        HealthCheckType: EC2
+        # InstanceId: String
+        # InstanceMaintenancePolicy: 
+        #   InstanceMaintenancePolicy
+        # LaunchConfigurationName: String
+        LaunchTemplate: 
+          LaunchTemplateId: !Ref PSB59AutoScallingGroupLaunchTemplate
+          Version: !GetAtt PSB59AutoScallingGroupLaunchTemplate.LatestVersionNumber
+          # LaunchTemplateSpecification
+        # LifecycleHookSpecificationList: 
+        #   - LifecycleHookSpecification
+        # LoadBalancerNames: 
+        #    - !Ref developmentelb
+        # MaxInstanceLifetime: Integer
+        MaxSize: 1
+        # MetricsCollection: 
+        #   - MetricsCollection
+        MinSize: 1
+        # MixedInstancesPolicy: 
+        #   MixedInstancesPolicy
+        # NewInstancesProtectedFromScaleIn: Boolean
+        # NotificationConfigurations: 
+        #   - NotificationConfiguration
+        # PlacementGroup: String
+        ServiceLinkedRoleARN: "arn:aws:iam::992382824137:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
+        Tags: 
+          - Key: Name
+            PropagateAtLaunch: true
+            Value: PSB59_APP_SERVER
+          - Key: Project
+            PropagateAtLaunch: true
+            Value: PSB59
+        # TargetGroupARNs: 
+        #   - !Ref QAOPLTG
+
+        # TerminationPolicies: 
+        #   - String
+        VPCZoneIdentifier: 
+          - Fn::ImportValue: 
+              'Fn::Sub': '${NetworkstackName}-PRIVSUBASEP'
+
+
+Outputs:
+  PSB59AutoScallingGroupLaunchTemplate:
+    Description: PSB59AutoScallingGroup Launch Template
+    Value: !Ref PSB59AutoScallingGroupLaunchTemplate
+    Export: 
+      Name: !Sub '${AWS::StackName}-PSB59AutoScallingGroupLaunchTemplate'
+
+  PSB59APPSGroupEP:
+    Description: PSB-59-APP Server Security Group 
+    Value: !Ref PSB59APPSGroup
+    Export: 
+      Name: !Sub '${AWS::StackName}-PSB59APPSGroupEP'  
+

@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CloudFormation template for a VPC with public and private subnets, and corresponding route tables. (No NAT Gateway)
+
+Parameters:
+  VpcCidr:
+    Type: String
+    Default: '10.60.0.0/16'
+    Description: The CIDR block for the VPC.
+
+  PublicSubnetCidr:
+    Type: String
+    Default: '10.60.1.0/24'
+    Description: The CIDR block for the public subnet.
+
+  PrivateSubnetCidr:
+    Type: String
+    Default: '10.60.2.0/24'
+    Description: The CIDR block for the private subnet.
+
+Resources:
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MY-MUMBAI-TEST
+
+  InternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MUMBAI-ITGW
+
+  AttachGateway:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnetCidr
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select 
+        - 0
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: PUBSUB-1A-MUMBAI
+
+  PrivateSubnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnetCidr
+      AvailabilityZone: !Select 
+        - 1
+        - !GetAZs ''
+      Tags:
+        - Key: Name
+          Value: PRISUB-1A-MUMBAI
+
+  PublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PUBRT-1A-MUMBAI
+
+  PrivateRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: PRIRT-1A-MUMBAI
+
+  PublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref InternetGateway
+
+  PrivateSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PrivateSubnet
+      RouteTableId: !Ref PrivateRouteTable
+
+  PublicSubnetRouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+Outputs:
+  VPCId:
+    Description: The VPC ID.
+    Value: !Ref VPC
+
+  PublicSubnetId:
+    Description: The ID of the public subnet.
+    Value: !Ref PublicSubnet
+
+  PrivateSubnetId:
+    Description: The ID of the private subnet.
+    Value: !Ref PrivateSubnet
+
+  PublicRouteTableId:
+    Description: The ID of the public route table.
+    Value: !Ref PublicRouteTable
+
+  PrivateRouteTableId:
+    Description: The ID of the private route table.
+    Value: !Ref PrivateRouteTable

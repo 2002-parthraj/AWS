@@ -1,0 +1,377 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates an app EC2 Instance.
+# Metadata: 
+
+Parameters: 
+
+  EnviromentName:
+    Type: String
+    Default: Development
+    Description: Environment Name that will be used to name resources.
+
+  Instancetypeapp:
+    Type: String
+    Default: r5a.xlarge
+    Description: Please enter app Instance Type
+    AllowedValues:
+    - r5a.large
+    - r5a.xlarge
+    - r5a.2xlarge
+    - r5a.4xlarge
+    - r5a.8xlarge
+  
+  NetworkstackName:
+    Type: String
+    Default: DevelopmentVPC
+    Description: Network Stack Name that will be used to name resources.
+
+  CMKKEYID:
+    Type: String
+    Default: "arn:aws:kms:ap-south-1:992382679841:key/f14ccfb2-beae-43e7-8e39-ef53cce60afc"
+    Description: CMK Key ID
+
+  RDSInstanceType:
+    Type: String
+    Default: db.t4g.large
+    AllowedValues:
+    - db.t4g.large
+    - db.t4g.xlarge
+    - db.t4g.2xlarge
+    
+    Description: Please enter RDS Instance Type
+
+  RDSOPPGSGStackName:
+    Type: String
+    Default: RDS-OG-PG-SG
+    Description: RDS-OG-PG-SG Stack Name
+
+# Mappings: 
+
+# Conditions: 
+
+Resources: 
+  UATOAMLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: UATOAMLaunchTemplate
+      LaunchTemplateData: 
+        ImageId: ami-04c72bce746f75fef
+        KeyName: PSB_DEV_APP
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name
+            Value: UAT_OAM_APP_SERVER
+          - Key: Project
+            Value: UAT-OAM
+        - ResourceType: volume
+          Tags:
+          - Key: Name
+            Value: UAT_OAM_APP_SERVER
+          - Key: Project
+            Value: UAT-OAM
+        UserData: 
+          !Base64 |
+                    #!/bin/bash
+                    sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+                    sudo systemctl restart sshd
+                    echo "KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256" | sudo tee -a /etc/ssh/sshd_config
+                    echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" | sudo tee -a /etc/ssh/sshd_config
+                    sudo systemctl restart sshd
+                    sudo groupadd developer
+                    echo "%developer ALL=/bin/mkdir, /bin/touch, /bin/cp, /bin/mv, /bin/git, /bin/sh, /bin/nano, /bin/vim, /opt/maven/bin/mvn, /bin/java, /bin/jps, /bin/kill, /bin/pkill, /opt/maven, /bin/cd, /bin/tail, /bin/du, /bin/grep, /bin/npm, /bin/cat, /bin/mysql, /bin/ng" | sudo tee -a /etc/etc/sudoers
+                    sudo echo "r23#[~5_*l49Z8I" | passwd --stdin "vapt"
+                    sudo echo "@op-20l*24K!9-8Ko" | passwd --stdin "opladmin"
+                    sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+                    sudo dnf install mysql unzip -y
+                    sudo curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+                    sudo unzip awscliv2.zip
+                    sudo ./aws/install
+                    sudo ln -s /usr/local/bin/aws /usr/bin/aws
+                    sudo yum update -y
+                    sudo dnf install -y https://s3.ap-south-1.amazonaws.com/amazon-ssm-ap-south-1/latest/linux_amd64/amazon-ssm-agent.rpm
+                    sudo systemctl enable amazon-ssm-agent
+                    sudo systemctl start amazon-ssm-agent
+                    sudo yum install java-1.8.0-openjdk* -y
+                    sudo wget https://archive.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz
+                    sudo /bin/tar -xf apache-maven-3.3.9-bin.tar.gz
+                    sudo /bin/mv apache-maven-3.3.9 maven
+                    sudo /bin/mv maven /opt/
+                    sudo /bin/chmod -R 755 /opt/maven
+                    sudo ln -s /opt/maven/bin/mvn /usr/bin/mvn
+                    sudo echo "JAVA_HOME=/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.402.b06-2.el9.x86_64/jre/" | sudo tee -a /etc/environment
+                    sudo echo "M2="/opt/maven/bin"" | sudo tee -a /etc/environment
+                    sudo echo "M2_HOME="/opt/maven" | sudo tee -a /etc/environment
+        InstanceType: !Ref Instancetypeapp
+        SecurityGroupIds:
+        - !Ref UATOAMSG
+        BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-06c70459440b670ff
+            VolumeSize: 10
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+              # - Key: Name
+              #   Value: !Sub ${EnviromentName}-Nginx-Root
+        - DeviceName: /dev/sdb
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0d34558deceb0686d
+            VolumeSize: 20
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var    
+        - DeviceName: /dev/sdc
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-07eb4e066f17ad13b 
+            VolumeSize: 12
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log
+        - DeviceName: /dev/sdd
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0e8196ebed26aa485
+            VolumeSize: 5
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log-Audit
+        - DeviceName: /dev/sde
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0647763ffe3b7a693
+            VolumeSize: 4
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Tmp
+        - DeviceName: /dev/sdf
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0c32668db752c3a1b
+            VolumeSize: 6
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-SWAP
+        - DeviceName: /dev/sdg
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0849be053cdeeed7b
+            VolumeSize: 15
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Home
+        - DeviceName: /dev/sdh
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-06b3dd1cbec58efe8
+            VolumeSize: 70
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Home
+
+  UATOAMDBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      AllocatedStorage: 60
+      DBInstanceClass: !Ref RDSInstanceType
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: true
+      # AvailabilityZone: 
+      BackupRetentionPeriod: 1
+      # CharacterSetName: 
+      DBInstanceIdentifier: uat-oam-db
+      # DBName: 
+      DBParameterGroupName: 
+        Fn::ImportValue:
+          Fn::Sub: '${RDSOPPGSGStackName}-DevelopmentDBParameterGroup8'
+      # DBSecurityGroups: 
+      #   - !Ref QAFITSCORERDSSG
+      DBSnapshotIdentifier: uat-oam-db-enc
+      DBSubnetGroupName: 
+        Fn::ImportValue:
+          Fn::Sub: '${RDSOPPGSGStackName}-DevelopmentDBSubnetGroup'
+      Engine: mysql
+      EngineVersion: 8.0.35
+      # Iops: 
+      KmsKeyId: !Ref CMKKEYID
+      # LicenseModel: 
+      # MasterUsername: 
+      # MasterUserPassword: 
+      MultiAZ: false
+      OptionGroupName: 
+        Fn::ImportValue:
+          Fn::Sub: '${RDSOPPGSGStackName}-DevelopmentDBOptionGroup8'
+      Port: 3306
+      # PreferredBackupWindow: 
+      # PreferredMaintenanceWindow: 
+      PubliclyAccessible: false
+      # SourceDBInstanceIdentifier: 
+      StorageEncrypted: true
+      StorageType: gp3
+      EnableIAMDatabaseAuthentication: true
+      VPCSecurityGroups:
+        - !Ref UATOAMRDSSG
+      Tags:
+        - Key: Name
+          Value: UAT-OAM-RDS
+        - Key: Project
+          Value: UAT-OAM  
+
+  UATOAMRDSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: UAT_OAM_RDS_SG 
+      GroupDescription: This security group for UAT-OAM-RDS
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref UATOAMSG
+          Description: UAT-OAM-APP-SERVER
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.0.2.228/32
+          Description: CheckPoint-VPN
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.0.4.140/32
+          Description: CheckPoint-VPN
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: All
+      Tags:
+        - Key: Name
+          Value: UAT-OAM-RDS-SG
+
+  UATOAMSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: UAT_OAM_APP_SG
+      GroupDescription: This security group for UAT-OAM-APP Server
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          SourceSecurityGroupId: 
+            Fn::ImportValue:
+              Fn::Sub: '${NetworkstackName}-NginxCommonSGEP'
+          Description: PUBELB1A
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.3.171/32
+          Description: PFSense
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.4.140/32
+          Description: CheckPoint-VPN
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.2.228/32
+          Description: CheckPoint-VPN
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: All
+      Tags:
+        - Key: Name
+          Value: UAT_OAM_APP_SG
+
+  UATOAMEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      # IamInstanceProfile: 
+      #   Fn::ImportValue:
+      #     Fn::Sub: '${NetworkstackName}-EC2S3CWSSMRoleARNEP'
+      LaunchTemplate: 
+        LaunchTemplateId: !Ref UATOAMLaunchTemplate
+        Version: !GetAtt UATOAMLaunchTemplate.LatestVersionNumber
+      SubnetId: 
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-PRIVSUBEPB'
+      Tags:
+        - Key: Name
+          Value: UAT-OAM-APP-Server
+        - Key: Project
+          Value: UAT-OAM
+
+# Outputs:
+#   QAFitLaunchTemplate:
+#     Description: app Launch Template
+#     Value: !Ref QAFitLaunchTemplate
+#     Export: 
+#       Name: !Sub '${AWS::StackName}-QAFitLaunchTemplate'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

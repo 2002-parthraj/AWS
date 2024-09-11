@@ -1,0 +1,687 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates an Nginx EC2 Instance.
+# Metadata: 
+
+Parameters: 
+
+  EnviromentName:
+    Type: String
+    Default: Production
+    Description: Environment Name that will be used to name resources.
+
+  Instancetypenginx:
+    Type: String
+    Default: t3a.micro
+    Description: Please enter Nginx Instance Type
+    AllowedValues:
+    - t3a.micro
+    - t3a.small
+    - t3a.medium
+    - t3a.large
+    - t3a.xlarge
+    - c5a.large
+    - c5a.xlarge
+    - m5a.large
+    - m6a.xlarge
+    - c5.large
+    - c5.xlarge
+    - m5.large
+    - m5.xlarge
+    - t3.large
+    - t3.xlarge
+    - t3.micro
+    - t3.small
+    - t3.medium
+  
+  NetworkstackName:
+    Type: String
+    Default: PROD-VPC-ALL-AZ
+    Description: Network Stack Name that will be used to name resources.
+
+  CMKKEYID:
+    Type: String
+    Default: "arn:aws:kms:ap-south-1:992382824137:key/f141d974-1ccb-4425-9e39-dc585bd0e57a"
+    Description: CMK Key ID
+  
+  LaunchTemplateStackName:
+    Type: String
+    Default: NginxLaunchTemplate
+    Description: Launch Template Stack Name that will be used to name resources.
+
+  CoolDownPeriod:
+    Type: String
+    Default: 0
+    Description: Cool Down Period in Seconds
+  
+  DesiredCapacityCount:
+    Type: String
+    Default: 2
+    Description: Desired Capacity
+
+  MaxSizeCount:
+    Type: String
+    Default: 2
+    Description: Max Size Count
+
+  MinSizeCount:
+    Type: String
+    Default: 2
+    Description: Min Size Count
+
+  HealthCheckGracePeriodSec:
+    Type: String
+    Default: 0
+    Description: Health Check Grace Period
+  
+  DefaultInstanceWarmupSec:
+    Type: String
+    Default: 0
+    Description: Default Instance Warmup
+
+  IAMROLEARN:
+    Type: String
+    Default: "arn:aws:iam::992382824137:instance-profile/PROD-VPC-ALL-AZ-EC2S3CWSSMRole-BPsxhjWB9yms"
+    Description: IAM Role ARN
+
+
+# Mappings: 
+
+# Conditions: 
+
+Resources: 
+  NginxLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: NginxLaunchTemplate
+      LaunchTemplateData: 
+        # IamInstanceProfile: 
+        #   Arn: !GetAtt '${NetworkstackName}-EC2S3CWSSMRoleARNEP.Arn'
+        ImageId: ami-06ce5f162af493173
+        KeyName: PROD_NGINX_SERVER
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name_
+            Value: PROD_NGINX
+          - Key: Project
+            Value: Common_PROD
+        - ResourceType: volume
+          Tags:
+          - Key: Name
+            Value: PROD_NGINX
+          - Key: Project
+            Value: Common_PROD
+        SecurityGroupIds: 
+        - !Ref NGINXPRODSGGROUP
+        UserData: 
+         !Base64 |
+                  #!/bin/bash
+                  sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+                  echo "KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256" | sudo tee -a /etc/ssh/sshd_config
+                  echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" | sudo tee -a /etc/ssh/sshd_config
+                  sudo systemctl restart sshd
+                  sudo echo "Welcome@12345" | passwd --stdin "ec2-user"
+                  sudo yum update -y
+                  #sudo yum install nginx git -y
+                  #sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+                  sudo dnf install -y https://s3.ap-south-1.amazonaws.com/amazon-ssm-ap-south-1/latest/linux_amd64/amazon-ssm-agent.rpm
+                  sudo systemctl enable amazon-ssm-agent
+                  sudo systemctl start amazon-ssm-agent
+                  
+        
+        InstanceType: !Ref Instancetypenginx
+        BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-06c70459440b670ff
+            VolumeSize: 10
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+              # - Key: Name
+              #   Value: !Sub ${EnviromentName}-Nginx-Root
+        - DeviceName: /dev/sdb
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0d34558deceb0686d
+            VolumeSize: 20
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var    
+        - DeviceName: /dev/sdc
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-07eb4e066f17ad13b 
+            VolumeSize: 12
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log
+        - DeviceName: /dev/sdd
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0e8196ebed26aa485
+            VolumeSize: 5
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log-Audit
+        - DeviceName: /dev/sde
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0647763ffe3b7a693
+            VolumeSize: 4
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Tmp
+        - DeviceName: /dev/sdf
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0c32668db752c3a1b
+            VolumeSize: 6
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-SWAP
+        - DeviceName: /dev/sdg
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            # SnapshotId: snap-0849be053cdeeed7b
+            VolumeSize: 15
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Home
+
+
+####################################################################################
+
+  NGINXPRODSGGROUP:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Nginx_Prod_SG
+      GroupDescription: This security group for PSB Server
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.3.171/32
+          Description: PFSense
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.80.15.0/24
+          Description: ELB-1A
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.80.16.0/24
+          Description: ELB-1B
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.80.17.0/24
+          Description: ELB-1C
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 10.0.0.0/8
+          Description: ELB-1C
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: All
+      Tags:
+        - Key: Name
+          Value: Nginx_Prod_SG
+
+  PRODINTERNALELBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: Internal_PROD_ELB_SG
+      GroupDescription: This security group for ELB
+      VpcId: 
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-VPC'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.0.2.50/32
+          Description: CP-AS1
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.0.3.127/32
+          Description: CP-AS2
+        - IpProtocol: tcp
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 10.0.3.116/32
+          Description: CP-MG
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          FromPort: 0
+          ToPort: 65535
+          CidrIp: 0.0.0.0/0
+          Description: All
+      Tags:
+        - Key: Name
+          Value: Internal_PROD_ELB_SG
+####################################################################################
+
+  prodinternalELB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      # EnforceSecurityGroupInboundRulesOnPrivateLinkTraffic: String
+      # IpAddressType: String
+      # LoadBalancerAttributes: 
+      #   - deletion_protection.enabled: false
+      #   - load_balancing.cross_zone.enabled: true
+      #   - routing.http2.enabled: true
+      Name: prodinternalelb
+      Scheme: internal
+      SecurityGroups: 
+       - !Ref PRODINTERNALELBSG
+      # SubnetMappings: 
+      #   - SubnetMapping
+      Subnets: 
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PRIVELBSUBEPA'
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PRIVELBSUBEPB'
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PRIVELBSUBEPC' 
+      # Tags: 
+      #   - key: Name
+      #     Value: prodinternalelb
+      Type: application
+
+#################################  ELB Listner  ##############################
+  prodineternalelblistner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      # AlpnPolicy: 
+      #   - String
+      Certificates: 
+        - CertificateArn: "arn:aws:acm:ap-south-1:992382824137:certificate/06f3a220-0494-4d8b-8561-01066bb64d57"
+      DefaultActions: 
+        - TargetGroupArn: !Ref PSB59TG
+          Type: forward
+      LoadBalancerArn: !Ref prodinternalELB
+      # MutualAuthentication: 
+      #   MutualAuthentication
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+
+#################################################################################
+
+########################### Listner Rule ########################################
+  
+  PSB59LBlistnerrule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions: 
+        - Type: forward
+          TargetGroupArn: !Ref PSB59TG
+      ListenerArn: !Ref prodineternalelblistner
+      Priority: 1
+      Conditions: 
+        - Field: host-header
+          HostHeaderConfig: 
+            Values:
+              - psbloansin59minutes.com
+              
+  
+  sbicbiboiunionfedralrule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions: 
+        - Type: forward
+          TargetGroupArn: !Ref PSB59TG
+      ListenerArn: !Ref prodineternalelblistner
+      Priority: 2
+      Conditions: 
+        - Field: host-header
+          HostHeaderConfig: 
+            Values:
+              - sbiloansin59minutes.com
+              - cbiloansin59minutes.com
+              - boiloansin59minutes.com
+              - unionloansin59minutes.com
+              - federalinstaloans.com
+
+
+########################### Target Group ############################
+  
+  PSB59TG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 4431
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      # IpAddressType: String
+      Matcher: 
+        HttpCode: 200-499
+      Name: PSB59TG
+      Port: 4431
+      Protocol: HTTPS
+      ProtocolVersion: HTTP1
+      # Tags: 
+      #   - key: Name
+      #     Value: nginxTG
+      # Targets: 
+      #   - AvailabilityZone: all
+      #     Id: !GetAtt NginxAutoScalingGroup.Instances.0.InstanceId
+      #     Port: 443
+      TargetType: instance
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # QAFitscoreTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4432
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 5
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: QAFitscoreTG
+  #     Port: 4432
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     # Tags: 
+  #     #   - key: Name
+  #     #     Value: nginxTG
+  #     # Targets: 
+  #     #   - AvailabilityZone: all
+  #     #     Id: !GetAtt NginxAutoScalingGroup.Instances.0.InstanceId
+  #     #     Port: 443
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+  
+  # SITOAMTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4433
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 5
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: SITOAMTG
+  #     Port: 4433
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # RABBITMQTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4434
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 5
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: RABBITMQTG
+  #     Port: 4434
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # JENKINSTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4435
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 10
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: JENKINSTG
+  #     Port: 4435
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # GAUCAMOLETG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4436
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 10
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: GAUCAMOLETG
+  #     Port: 4436
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # UATOPLTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4437
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 10
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: UATOPLTG
+  #     Port: 4437
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # SITHSBCTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4438
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 10
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: SITHSBCTG
+  #     Port: 4438
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+  # SITPABLTG:
+  #   Type: AWS::ElasticLoadBalancingV2::TargetGroup
+  #   Properties:
+  #     HealthCheckEnabled: true
+  #     HealthCheckIntervalSeconds: 30
+  #     HealthCheckPath: /
+  #     HealthCheckPort: 4439
+  #     HealthCheckProtocol: HTTPS
+  #     HealthCheckTimeoutSeconds: 10
+  #     HealthyThresholdCount: 2
+  #     # IpAddressType: String
+  #     Matcher: 
+  #       HttpCode: 200-499
+  #     Name: SITPABLTG
+  #     Port: 4439
+  #     Protocol: HTTPS
+  #     ProtocolVersion: HTTP1
+  #     TargetType: instance
+  #     UnhealthyThresholdCount: 5
+  #     VpcId: 
+  #       Fn::ImportValue:
+  #         'Fn::Sub': '${NetworkstackName}-VPC'
+
+
+  
+
+
+
+
+
+######################################################################################################
+  NginxAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        AutoScalingGroupName: NginxAutoScalingGroup
+        AvailabilityZones: 
+          - ap-south-1a
+        # CapacityRebalance: Boolean
+        # Context: String
+        Cooldown: !Ref CoolDownPeriod
+        DefaultInstanceWarmup: !Ref DefaultInstanceWarmupSec
+        DesiredCapacity: !Ref DesiredCapacityCount
+        DesiredCapacityType: units
+        HealthCheckGracePeriod: !Ref HealthCheckGracePeriodSec
+        HealthCheckType: EC2
+        # InstanceId: String
+        # InstanceMaintenancePolicy: 
+        #   InstanceMaintenancePolicy
+        # LaunchConfigurationName: String
+        LaunchTemplate: 
+          LaunchTemplateId: !Ref NginxLaunchTemplate
+          Version: !GetAtt NginxLaunchTemplate.LatestVersionNumber
+          # LaunchTemplateSpecification
+        # LifecycleHookSpecificationList: 
+        #   - LifecycleHookSpecification
+        # LoadBalancerNames: 
+        #    - !Ref developmentelb
+        # MaxInstanceLifetime: Integer
+        MaxSize: 2
+        # MetricsCollection: 
+        #   - MetricsCollection
+        MinSize: 2
+        # MixedInstancesPolicy: 
+        #   MixedInstancesPolicy
+        # NewInstancesProtectedFromScaleIn: Boolean
+        # NotificationConfigurations: 
+        #   - NotificationConfiguration
+        # PlacementGroup: String
+        ServiceLinkedRoleARN: "arn:aws:iam::992382824137:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
+        Tags: 
+          - Key: Name
+            PropagateAtLaunch: true
+            Value: Prod_Nginx
+        TargetGroupARNs: 
+          - !Ref PSB59TG
+          # - !Ref QAFitscoreTG
+          # - !Ref SITOAMTG
+        # TerminationPolicies: 
+        #   - String
+        VPCZoneIdentifier: 
+          - Fn::ImportValue: 
+              'Fn::Sub': '${NetworkstackName}-PRIVSUBEPA'
+
+
+Outputs:
+  NginxLaunchTemplate:
+    Description: Nginx Launch Template
+    Value: !Ref NginxLaunchTemplate
+    Export: 
+      Name: !Sub '${AWS::StackName}-NginxLaunchTemplate'
+
+  internalelb:
+    Description: internalelb ARN export
+    Value: !Ref prodinternalELB
+    Export: 
+      Name: !Sub '${AWS::StackName}-developmentelb'
+
