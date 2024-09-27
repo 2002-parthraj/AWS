@@ -1,0 +1,8 @@
+regions & az 
+
+IAM 
+    users
+    groups 
+    polices
+    MFA
+    
