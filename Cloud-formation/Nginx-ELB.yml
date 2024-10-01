@@ -1,0 +1,448 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: This template creates an Nginx EC2 Instance.
+# Metadata: 
+
+Parameters: 
+
+  EnviromentName:
+    Type: String
+    Default: Development
+    Description: Environment Name that will be used to name resources.
+
+  Instancetypenginx:
+    Type: String
+    Default: t3a.micro
+    Description: Please enter Nginx Instance Type
+    AllowedValues:
+    - t3a.micro
+    - t3a.small
+    - t3a.medium
+    - t3a.large
+    - t3a.xlarge
+    - c5a.large
+    - c5a.xlarge
+    - m5a.large
+    - m5a.xlarge
+    - c5.large
+    - c5.xlarge
+    - m5.large
+    - m5.xlarge
+    - t3.large
+    - t3.xlarge
+    - t3.micro
+    - t3.small
+    - t3.medium
+  
+  NetworkstackName:
+    Type: String
+    Default: DevelopmentVPC
+    Description: Network Stack Name that will be used to name resources.
+
+  CMKKEYID:
+    Type: String
+    Default: "arn:aws:kms:ap-south-1:992382679841:key/f14ccfb2-beae-43e7-8e39-ef53cce60afc"
+    Description: CMK Key ID
+  
+  LaunchTemplateStackName:
+    Type: String
+    Default: NginxLaunchTemplate
+    Description: Launch Template Stack Name that will be used to name resources.
+
+  CoolDownPeriod:
+    Type: String
+    Default: 0
+    Description: Cool Down Period in Seconds
+  
+  DesiredCapacityCount:
+    Type: String
+    Default: 1
+    Description: Desired Capacity
+
+  MaxSizeCount:
+    Type: String
+    Default: 1
+    Description: Max Size Count
+
+  MinSizeCount:
+    Type: String
+    Default: 1
+    Description: Min Size Count
+
+  HealthCheckGracePeriodSec:
+    Type: String
+    Default: 0
+    Description: Health Check Grace Period
+  
+  DefaultInstanceWarmupSec:
+    Type: String
+    Default: 0
+    Description: Default Instance Warmup
+
+  IAMROLEARN:
+    Type: String
+    Default: "arn:aws:iam::992382679841:instance-profile/DevelopmentVPC-EC2S3CWSSMRole-pxU91oCnX2gj"
+    Description: IAM Role ARN
+
+
+# Mappings: 
+
+# Conditions: 
+
+Resources: 
+  NginxLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: NginxLaunchTemplate
+      LaunchTemplateData: 
+        # IamInstanceProfile: 
+        #   Arn: !GetAtt '${NetworkstackName}-EC2S3CWSSMRoleARNEP.Arn'
+        ImageId: ami-0a3f47503a1f668e2
+        KeyName: PSB_DEV_NGINX
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name_
+            Value: Nginx_SERVER
+          - Key: Project
+            Value: Common_DEV
+        - ResourceType: volume
+          Tags:
+          - Key: Name
+            Value: Nginx_SERVER
+          - Key: Project
+            Value: Common_DEV
+        SecurityGroupIds: 
+        - Fn::ImportValue:
+            Fn::Sub: "${NetworkstackName}-NginxCommonSGEP"
+        UserData: 
+         !Base64 |
+                  #!/bin/bash
+                  sudo sed -i 's/PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config.d/50-cloud-init.conf
+                  echo "KexAlgorithms curve25519-sha256@libssh.org,ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256" | sudo tee -a /etc/ssh/sshd_config
+                  echo "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr" | sudo tee -a /etc/ssh/sshd_config
+                  sudo systemctl restart sshd
+                  sudo echo "Welcome@12345" | passwd --stdin "vapt"
+                  sudo yum update -y
+                  sudo yum install nginx git -y
+                  sudo dnf install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm -y
+                  sudo dnf install -y https://s3.ap-south-1.amazonaws.com/amazon-ssm-ap-south-1/latest/linux_amd64/amazon-ssm-agent.rpm
+                  sudo systemctl enable amazon-ssm-agent
+                  sudo systemctl start amazon-ssm-agent
+                  sudo /bin/mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.bak
+                  sudo /bin/rm -rf /etc/nginx/conf.d
+                  sudo git clone https://awsbhut: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@github.com/awsbhut/Nginx-Hardning.git
+                  sudo /bin/mv Nginx-Hardning/nginx.conf /etc/nginx/nginx.conf
+                  sudo /bin/mv Nginx-Hardning/instantmseloans.in* /etc/ssl/
+                  sudo /bin/chown -R nginx:nginx /etc/ssl/instantmseloans.in*
+                  sudo /bin/chmod -R 600 /etc/ssl/instantmseloans.in*
+                  sudo /bin/mv Nginx-Hardning/conf.d /etc/nginx/
+                  sudo semanage permissive -a httpd_t
+                  sudo systemctl restart nginx
+        
+        InstanceType: !Ref Instancetypenginx
+        BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-06c70459440b670ff
+            VolumeSize: 10
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+              # - Key: Name
+              #   Value: !Sub ${EnviromentName}-Nginx-Root
+        - DeviceName: /dev/sdb
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-0d34558deceb0686d
+            VolumeSize: 20
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var    
+        - DeviceName: /dev/sdc
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-07eb4e066f17ad13b 
+            VolumeSize: 12
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log
+        - DeviceName: /dev/sdd
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-0e8196ebed26aa485
+            VolumeSize: 5
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Log-Audit
+        - DeviceName: /dev/sde
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-0647763ffe3b7a693
+            VolumeSize: 4
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Var-Tmp
+        - DeviceName: /dev/sdf
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-0c32668db752c3a1b
+            VolumeSize: 6
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-SWAP
+        - DeviceName: /dev/sdg
+          Ebs:
+            Encrypted: true
+            DeleteOnTermination: true 
+            Iops: 3000
+            KmsKeyId: !Ref CMKKEYID
+            SnapshotId: snap-0849be053cdeeed7b
+            VolumeSize: 15
+            VolumeType: gp3
+            Throughput: 125
+            # Tags:
+            #   - Key: Name
+            #     Value: !Sub ${EnviromentName}-Nginx-Home
+
+
+  developmentelb:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      # EnforceSecurityGroupInboundRulesOnPrivateLinkTraffic: String
+      # IpAddressType: String
+      # LoadBalancerAttributes: 
+      #   - deletion_protection.enabled: false
+      #   - load_balancing.cross_zone.enabled: true
+      #   - routing.http2.enabled: true
+      Name: developmentelb
+      Scheme: internet-facing
+      SecurityGroups: 
+       - Fn::ImportValue:
+          Fn::Sub: '${NetworkstackName}-ElbCommonSGEP'
+      # SubnetMappings: 
+      #   - SubnetMapping
+      Subnets: 
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PUBELBSUBEPA'
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PUBELBSUBEPB'
+        - Fn::ImportValue:
+            'Fn::Sub': '${NetworkstackName}-PUBELBSUBEPC' 
+      # Tags: 
+      #   - key: Name
+      #     Value: developmentelb
+      Type: application
+
+#################################  ELB Listner  ##############################
+  developmentelblistner:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      # AlpnPolicy: 
+      #   - String
+      Certificates: 
+        - CertificateArn: "arn:aws:acm:ap-south-1:992382679841:certificate/a7283451-2157-4bb2-85d1-dd53d173ec3f"
+      DefaultActions: 
+        - TargetGroupArn: !Ref QAOPLTG
+          Type: forward
+      LoadBalancerArn: !Ref developmentelb
+      # MutualAuthentication: 
+      #   MutualAuthentication
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-2016-08
+
+#################################################################################
+
+########################### Listner Rule ########################################
+  qaoplelblistnerrule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions: 
+        - Type: forward
+          TargetGroupArn: !Ref QAOPLTG
+      ListenerArn: !Ref developmentelblistner
+      Priority: 1
+      Conditions: 
+        - Field: host-header
+          HostHeaderConfig: 
+            Values:
+              - qa-opl2.instantmseloans.in
+              
+  qafitscoreelblistnerrule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      Actions: 
+        - Type: forward
+          TargetGroupArn: !Ref QAFitscoreTG
+      ListenerArn: !Ref developmentelblistner
+      Priority: 2
+      Conditions: 
+        - Field: host-header
+          HostHeaderConfig: 
+            Values:
+              - qa-fitscore2.instantmseloans.in
+
+
+########################### Target Group ############################
+  QAOPLTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 4431
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      # IpAddressType: String
+      Matcher: 
+        HttpCode: 200-499
+      Name: QAOPLTG
+      Port: 4431
+      Protocol: HTTPS
+      ProtocolVersion: HTTP1
+      # Tags: 
+      #   - key: Name
+      #     Value: nginxTG
+      # Targets: 
+      #   - AvailabilityZone: all
+      #     Id: !GetAtt NginxAutoScalingGroup.Instances.0.InstanceId
+      #     Port: 443
+      TargetType: instance
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          'Fn::Sub': '${NetworkstackName}-VPC'
+
+  QAFitscoreTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckPort: 4432
+      HealthCheckProtocol: HTTPS
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      # IpAddressType: String
+      Matcher: 
+        HttpCode: 200-499
+      Name: QAFitscoreTG
+      Port: 4432
+      Protocol: HTTPS
+      ProtocolVersion: HTTP1
+      # Tags: 
+      #   - key: Name
+      #     Value: nginxTG
+      # Targets: 
+      #   - AvailabilityZone: all
+      #     Id: !GetAtt NginxAutoScalingGroup.Instances.0.InstanceId
+      #     Port: 443
+      TargetType: instance
+      UnhealthyThresholdCount: 5
+      VpcId: 
+        Fn::ImportValue:
+          'Fn::Sub': '${NetworkstackName}-VPC'
+
+
+  NginxAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+        AutoScalingGroupName: NginxAutoScalingGroup
+        AvailabilityZones: 
+          - ap-south-1a
+        # CapacityRebalance: Boolean
+        # Context: String
+        Cooldown: !Ref CoolDownPeriod
+        DefaultInstanceWarmup: !Ref DefaultInstanceWarmupSec
+        DesiredCapacity: !Ref DesiredCapacityCount
+        DesiredCapacityType: units
+        HealthCheckGracePeriod: !Ref HealthCheckGracePeriodSec
+        HealthCheckType: EC2
+        # InstanceId: String
+        # InstanceMaintenancePolicy: 
+        #   InstanceMaintenancePolicy
+        # LaunchConfigurationName: String
+        LaunchTemplate: 
+          LaunchTemplateId: !Ref NginxLaunchTemplate
+          Version: !GetAtt NginxLaunchTemplate.LatestVersionNumber
+          # LaunchTemplateSpecification
+        # LifecycleHookSpecificationList: 
+        #   - LifecycleHookSpecification
+        # LoadBalancerNames: 
+        #    - !Ref developmentelb
+        # MaxInstanceLifetime: Integer
+        MaxSize: 1
+        # MetricsCollection: 
+        #   - MetricsCollection
+        MinSize: 1
+        # MixedInstancesPolicy: 
+        #   MixedInstancesPolicy
+        # NewInstancesProtectedFromScaleIn: Boolean
+        # NotificationConfigurations: 
+        #   - NotificationConfiguration
+        # PlacementGroup: String
+        ServiceLinkedRoleARN: "arn:aws:iam::992382679841:role/aws-service-role/autoscaling.amazonaws.com/AWSServiceRoleForAutoScaling"
+        Tags: 
+          - Key: Name
+            PropagateAtLaunch: true
+            Value: Nginx_SERVER
+        TargetGroupARNs: 
+          - !Ref QAOPLTG
+          - !Ref QAFitscoreTG
+        # TerminationPolicies: 
+        #   - String
+        VPCZoneIdentifier: 
+          - Fn::ImportValue: 
+              'Fn::Sub': '${NetworkstackName}-PRIVSUBEPA'
+
+
+Outputs:
+  NginxLaunchTemplate:
+    Description: Nginx Launch Template
+    Value: !Ref NginxLaunchTemplate
+    Export: 
+      Name: !Sub '${AWS::StackName}-NginxLaunchTemplate'
+
+
+
+
+
+
+
+
+
+
+
+
+
+
