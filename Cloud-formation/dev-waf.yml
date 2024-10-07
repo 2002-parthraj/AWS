@@ -1,6 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: This Template create AWS WAF V2 and Attached to ELB.
-# Metadata: 
+Description: This Template creates AWS WAF V2.
 
 Parameters: 
   EnviromentName:
@@ -8,22 +7,7 @@ Parameters:
     Default: Development
     Description: Environment Name that will be used to name resources.
 
-  ELBstackName:
-    Type: String
-    Default: NGINX-AS-ELB-Environment
-    Description: ELB Stack Name that will be used to name resources.
-
-  # ELBARN:
-  #   Type: String
-  #   Default: "arn:aws:elasticloadbalancing:ap-south-1:992382679841:loadbalancer/app/developmentelb/db369b7d2924588d"
-  #   Description: ELB
-
-# Mappings: 
-
-# Conditions: 
-
 Resources: 
-
   DEVWAF:
     Type: AWS::WAFv2::WebACL
     Properties:
@@ -32,7 +16,7 @@ Resources:
       Scope: REGIONAL
       CustomResponseBodies:
         GeoSpecific-Block:
-          Content: '{ "Error": "403 Forbidden You have Blocked By GeoSpecific-Block" }'
+          Content: '{ "Error": "403 Forbidden You have been Blocked by GeoSpecific-Block" }'
           ContentType: APPLICATION_JSON
       Tags: 
         - Key: Name
@@ -107,7 +91,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesAmazonIpReputationList
-
       - Name: AWSManagedRulesAnonymousIpList
         Priority: 5
         Statement:
@@ -120,7 +103,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesAnonymousIpList
-
       - Name: AWSManagedRulesCommonRule
         Priority: 6
         Statement:
@@ -133,7 +115,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesCommonRule
-
       - Name: AWSManagedRulesLinuxRule
         Priority: 7
         Statement:
@@ -146,7 +127,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesLinuxRule
-
       - Name: AWSManagedRulesPHPRule
         Priority: 8
         Statement:
@@ -159,7 +139,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesPHPRule
-
       - Name: AWSManagedRulesUnixRule
         Priority: 9
         Statement:
@@ -172,7 +151,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesUnixRule
-
       - Name: AWSManagedRulesSQLiRule
         Priority: 10
         Statement:
@@ -185,7 +163,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesSQLiRule
-      
       - Name: AWSManagedRulesWindowsRule
         Priority: 11
         Statement:
@@ -198,7 +175,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesWindowsRule
-
       - Name: AWSManagedRulesWordPressRule
         Priority: 12
         Statement:
@@ -211,7 +187,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesWordPressRule
-
       - Name: AWSManagedRulesKnownBadInputsRule
         Priority: 13
         Statement:
@@ -224,16 +199,6 @@ Resources:
           SampledRequestsEnabled: True
           CloudWatchMetricsEnabled: False
           MetricName: AWSManagedRulesKnownBadInputsRule
-      
-
-
-  DEVWAFASSOCIATE:
-    Type: AWS::WAFv2::WebACLAssociation
-    Properties:
-      WebACLArn: !GetAtt DEVWAF.Arn
-      ResourceArn: 
-        Fn::ImportValue:
-          Fn::Sub: '${ELBstackName}-developmentelb'
 
   DEVWHITEIP:
     Type: AWS::WAFv2::IPSet
@@ -259,7 +224,7 @@ Resources:
     Type: AWS::WAFv2::IPSet
     Properties:
       Name: WAF-BLACKLIST-IP
-      Description: SET oF BLACKLIST-IP
+      Description: SET Of BLACKLIST-IP
       IPAddressVersion: IPV4
       Addresses: 
         - 185.224.128.10/32
@@ -268,20 +233,10 @@ Resources:
         - Key: Name
           Value: !Sub ${EnviromentName}-WAF-BLACKLIST-IP
 
- 
-
-
 Outputs:
 
   DEVWAF:
-    Description: Development WAF intigrated with ELB
+    Description: Development WAF
     Value: !Ref DEVWAF
     Export: 
       Name: !Sub '${AWS::StackName}-DEVWAF'
-
-  DEVELBASSOCIATE:
-    Description: Development WAF intigrated with ELB
-    Value: !Ref DEVWAFASSOCIATE
-    Export: 
-      Name: !Sub '${AWS::StackName}-DEVELBASSOCIATE'
-  
