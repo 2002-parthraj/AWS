@@ -61,4 +61,4 @@ Outputs:
     Description: 'The ID of the hosted zone.'
     Value: !Ref HostedZone
     Export:
-      Name: !Sub '${AWS::StackName}-HostedZoneId'
+      Name: !Sub '${AWS::StackName}-HostedZoneId' 
