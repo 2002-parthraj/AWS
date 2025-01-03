@@ -1,0 +1,162 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Creates a Lambda function with a 5-minute timeout and associated resources for DR monitoring.
+
+Parameters:
+  SubscriptionEmails:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of email addresses to subscribe to the SNS topic.
+
+  SourceServerIDs:
+    Type: CommaDelimitedList
+    Description: Comma-separated list of SourceServerIDs to monitor for LagDuration.
+
+Resources:
+  # Lambda Execution Role
+  DRNotificationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: DR-notification-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSNSFullAccess
+        - arn:aws:iam::aws:policy/AWSElasticDisasterRecoveryReadOnlyAccess
+        - arn:aws:iam::aws:policy/AWSLambdaExecute
+        - arn:aws:iam::aws:policy/CloudWatchFullAccessV2
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+
+  # Lambda Function
+  DRNotificationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: DRNotificationLambda
+      Runtime: python3.9
+      Role: !GetAtt DRNotificationRole.Arn
+      Handler: index.lambda_handler
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+
+          # Initialize SNS client
+          sns_client = boto3.client('sns')
+
+          # Replace this with your SNS topic ARN
+          SNS_TOPIC_ARN = "arn:aws:sns:ap-southeast-1:954636365803:electromechDRDatareplicationstatus"
+
+          def lambda_handler(event, context):
+              """
+              Handles CloudWatch alarm events, extracts the triggered metric name, 
+              formats a message, and sends it to an SNS topic.
+              """
+              try:
+                  # Parse event details
+                  detail = event.get("detail", {})
+                  alarm_name = detail.get("alarmName", "Unknown Alarm")
+                  metric_name = detail.get("configuration", {}).get("metrics", [{}])[0].get("name", "Unknown Metric")
+                  
+                  # Hardcoded values for custom fields
+                  account = "Cliantha"
+                  region = "Singapore"
+                  reason = "Lag duration is above 2 hours"
+                  
+                  # Custom message format
+                  message = f"""
+                  DR Alert !!!
+                  
+                  Account: {account}
+                  Region: {region}
+                  Alarm Name: {alarm_name}
+                  Reason: {reason}
+                  """
+                  
+                  # Publish the message to the SNS topic
+                  response = sns_client.publish(
+                      TopicArn=SNS_TOPIC_ARN,
+                      Subject=f"CloudWatch Alarm Triggered: {metric_name}",
+                      Message=message
+                  )
+                  
+                  print(f"Message published to SNS: {response}")
+                  return {"status": "success", "response": response}
+              
+              except Exception as e:
+                  print(f"Error processing event: {e}")
+                  return {"status": "error", "error_message": str(e)}
+
+      Environment:
+        Variables:
+#          AccountName: !Ref AccountName
+#          RegionName: !Ref RegionName
+          SNS_TOPIC_ARN: !Ref ElectromechDRSNS
+      Timeout: 300  # 5 minutes timeout
+      MemorySize: 128
+      Tags:
+        - Key: Environment
+          Value: Production
+
+  # SNS Topic
+  ElectromechDRSNS:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: electromechDRDatareplicationstatus
+
+  # SNS Subscription for Email
+  SNSSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Select [0, !Ref SubscriptionEmails]  # Select the first email address from the list
+      TopicArn: !Ref ElectromechDRSNS
+
+  # EventBridge Rule
+  DRRuleEB:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: DR-rule-EB
+      EventPattern:
+        source:
+          - "aws.cloudwatch"
+        detail-type:
+          - "CloudWatch Alarm State Change"
+        detail:
+          state:
+            value:
+              - !Join ["", ["LagDuration-", !Select [0, !Ref SourceServerIDs]]]
+      Targets:
+        - Arn: !GetAtt DRNotificationLambda.Arn
+          Id: DRNotificationLambdaTarget
+
+  # Permissions for EventBridge to invoke Lambda
+  LambdaPermissionForEventBridge:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt DRNotificationLambda.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DRRuleEB.Arn
+
+  # CloudWatch Alarm for the first SourceServerID
+  Alarm1:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Join ["", ["LagDuration-", !Select [0, !Ref SourceServerIDs]]]
+      AlarmDescription: !Join ["", ["Alarm for LagDuration >= 3600 for SourceServerID ", !Select [0, !Ref SourceServerIDs], "."]]
+      Namespace: AWS/DRS
+      MetricName: LagDuration
+      Dimensions:
+        - Name: SourceServerID
+          Value: !Select [0, !Ref SourceServerIDs]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3600
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      AlarmActions:
+        - !GetAtt DRNotificationLambda.Arn  # This line specifies Lambda as the action target
+      TreatMissingData: missing
